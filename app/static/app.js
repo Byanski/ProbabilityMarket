@@ -15,6 +15,11 @@ const els = {
   matrixRows: document.querySelector("#matrixRows"),
   refreshButton: document.querySelector("#refreshButton"),
   tabs: document.querySelector("#tabs"),
+  // New Modal Elements
+  depthModal: document.querySelector("#depthModal"),
+  modalTitle: document.querySelector("#modalTitle"),
+  modalBody: document.querySelector("#modalBody"),
+  closeModalBtn: document.querySelector("#closeModalBtn"),
 };
 
 async function loadPayload(categoryKey = state.activeCategoryKey) {
@@ -105,15 +110,22 @@ function renderRows(rows) {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.target_matchup)}</td>
-          <td>${escapeHtml((row.market_keys || []).join(", ") || "n/a")}</td>
-          <td class="numeric">${escapeHtml(formatPoints(row.line_points || []))}</td>
-          <td class="numeric">${formatNumber(row.aggregated_mean_value)}</td>
-          <td class="numeric">${formatNumber(row.highest_variance_vector)}</td>
-          <td class="numeric">${formatSigned(row.adjustment_score)}</td>
-          <td class="numeric">${formatNumber(row.normalized_probability)}</td>
-          <td class="numeric">${row.source_count}</td>
-          <td>${escapeHtml(formatVectors(row.telemetry_vectors || []))}</td>
+          <td data-label="Target">${escapeHtml(row.target_matchup)}</td>
+          <td data-label="Favorite">${escapeHtml(row.market_favorite || "n/a")}</td>
+          <td data-label="Prediction">
+            <strong>${escapeHtml(row.predicted_winner || "n/a")}</strong>
+            <div class="subtle">${formatPercent(row.normalized_probability)}</div>
+          </td>
+          <td data-label="Confidence" class="numeric">${formatPercent(row.prediction_confidence)}</td>
+          <td data-label="Markets">${escapeHtml((row.market_keys || []).join(", ") || "n/a")}</td>
+          <td data-label="Lines" class="numeric">${escapeHtml(formatPoints(row.line_points || []))}</td>
+          <td data-label="Adjustment" class="numeric">${formatSigned(row.adjustment_score)}</td>
+          <td data-label="Sources" class="numeric">${row.source_count}</td>
+          <td data-label="Action">
+            <button class="action-btn" data-action="view-depth" data-event-id="${escapeHtml(row.id)}" data-matchup="${escapeHtml(row.target_matchup)}">
+              Deep Dive
+            </button>
+          </td>
         </tr>
       `,
     )
@@ -144,6 +156,10 @@ function formatSigned(value) {
   return `${number > 0 ? "+" : ""}${number.toFixed(4)}`;
 }
 
+function formatPercent(value) {
+  return `${(Number(value || 0) * 100).toFixed(1)}%`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -152,6 +168,162 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+function encodePathSegment(value) {
+  return encodeURIComponent(String(value));
+}
+
+// --- Deep Dive Modal Logic ---
+
+async function openDepthModal(eventId, matchup) {
+  els.modalTitle.textContent = `Deep Dive: ${matchup}`;
+  els.modalBody.innerHTML = `<p style="color: var(--muted);">Fetching live multi-source vectors...</p>`;
+  els.depthModal.showModal();
+
+  try {
+    const categoryKey = state.activeCategoryKey;
+    const response = await fetch(`/api/sports/${categoryKey}/events/${eventId}/odds`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const data = await response.json();
+    renderDepthView(data);
+  } catch (error) {
+    els.modalBody.innerHTML = `<p style="color: var(--warn);">Failed to load depth data: ${error.message}</p>`;
+  }
+}
+
+function renderDepthView(data) {
+  if (!data || !data.bookmakers || data.bookmakers.length === 0) {
+    els.modalBody.innerHTML = `<p>No extended market data available for this event.</p>`;
+    return;
+  }
+
+  const teamNames = [data.away_team, data.home_team].filter(Boolean);
+  const teamButtons = teamNames
+    .map(
+      (team) => `
+        <button class="team-pill" type="button" data-action="view-roster" data-team="${escapeHtml(team)}">
+          ${escapeHtml(team)}
+        </button>
+      `,
+    )
+    .join("");
+
+  let rowsHtml = "";
+  data.bookmakers.forEach((source) => {
+    source.markets.forEach((market) => {
+      market.outcomes.forEach((outcome) => {
+        const pointDisplay = outcome.point !== undefined && outcome.point !== null ? Number(outcome.point).toFixed(1) : "-";
+        const updateTime = new Date(source.last_update).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        rowsHtml += `
+          <tr>
+            <td><strong>${escapeHtml(source.title)}</strong></td>
+            <td>${escapeHtml(market.key)}</td>
+            <td>${teamNames.includes(outcome.name) ? teamTargetButton(outcome.name) : escapeHtml(outcome.name)}</td>
+            <td class="numeric">${formatNumber(outcome.price)}</td>
+            <td class="numeric">${pointDisplay}</td>
+            <td>${updateTime}</td>
+          </tr>
+        `;
+      });
+    });
+  });
+
+  els.modalBody.innerHTML = `
+    <section class="team-drilldown">
+      <p class="eyebrow">Team rosters</p>
+      <div class="team-pill-row">${teamButtons}</div>
+      <div id="rosterPanel" class="roster-panel" hidden></div>
+    </section>
+    <div class="modal-table-wrap">
+      <table class="depth-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Market</th>
+            <th>Target Vector</th>
+            <th>Line Value</th>
+            <th>Point Limit</th>
+            <th>Last Update</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function teamTargetButton(team) {
+  return `
+    <button class="link-button" type="button" data-action="view-roster" data-team="${escapeHtml(team)}">
+      ${escapeHtml(team)}
+    </button>
+  `;
+}
+
+async function loadTeamRoster(teamName) {
+  const panel = document.querySelector("#rosterPanel");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.innerHTML = `<p class="subtle">Loading roster and player performance for ${escapeHtml(teamName)}...</p>`;
+
+  try {
+    const response = await fetch(`/api/sports/${state.activeCategoryKey}/teams/${encodePathSegment(teamName)}/roster`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    renderRosterPanel(panel, data);
+  } catch (error) {
+    panel.innerHTML = `<p style="color: var(--warn);">Failed to load roster: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderRosterPanel(panel, data) {
+  if (!data || data.status !== "live") {
+    panel.innerHTML = `<p>${escapeHtml(data?.message || "Roster data is not available for this team.")}</p>`;
+    return;
+  }
+
+  const players = data.players || [];
+  const rows = players
+    .map((player) => {
+      const stat = player.season_stat || {};
+      const performance = player.performance || {};
+      return `
+        <tr>
+          <td><strong>${escapeHtml(player.name)}</strong><div class="subtle">#${escapeHtml(player.jersey_number || "-")} ${escapeHtml(player.status || "")}</div></td>
+          <td>${escapeHtml(player.position || "-")}</td>
+          <td>${escapeHtml(stat.ops || stat.era || stat.avg || stat.whip || "n/a")}</td>
+          <td><span class="trend ${escapeHtml(performance.direction || "neutral")}">${escapeHtml(performance.label || "Stable")}</span></td>
+          <td class="numeric">${formatSigned(performance.score || 0)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  panel.innerHTML = `
+    <div class="roster-heading">
+      <strong>${escapeHtml(data.team.name)}</strong>
+      <span>${escapeHtml(data.team.abbreviation || "")} · ${players.length} active players</span>
+    </div>
+    <div class="modal-table-wrap compact">
+      <table class="depth-table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Pos</th>
+            <th>Key Stat</th>
+            <th>Performance</th>
+            <th>Delta</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="5">No active roster rows available.</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// --- Event Listeners ---
 
 els.tabs.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-category-key]");
@@ -162,4 +334,25 @@ els.tabs.addEventListener("click", (event) => {
 
 els.refreshButton.addEventListener("click", () => loadPayload());
 
+// Listen for clicks on the Deep Dive buttons
+els.matrixRows.addEventListener("click", async (event) => {
+  const btn = event.target.closest('[data-action="view-depth"]');
+  if (!btn) return;
+  const eventId = btn.dataset.eventId;
+  const matchup = btn.dataset.matchup;
+  await openDepthModal(eventId, matchup);
+});
+
+els.modalBody.addEventListener("click", async (event) => {
+  const btn = event.target.closest('[data-action="view-roster"]');
+  if (!btn) return;
+  await loadTeamRoster(btn.dataset.team);
+});
+
+// Close Modal
+els.closeModalBtn.addEventListener("click", () => {
+  els.depthModal.close();
+});
+
+// Init
 loadPayload();

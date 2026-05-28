@@ -52,24 +52,37 @@
         </div>
 
         <div class="table-wrap">
-          <table>
+          <table class="matrix-table">
             <thead>
               <tr>
                 <th>Target Matchup</th>
+                <th>Market Favorite</th>
+                <th>Prediction</th>
+                <th>Confidence</th>
                 <th>Markets</th>
                 <th>Lines</th>
-                <th>Aggregated Mean Value</th>
-                <th>Highest Variance Vector</th>
                 <th>Adjustment Score</th>
-                <th>Normalized Index</th>
                 <th>Sources</th>
-                <th>Telemetry Vectors</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="matrixRows"></tbody>
           </table>
         </div>
       </section>
+
+      <dialog id="depthModal" class="modal">
+        <div class="modal-content">
+          <header class="modal-header">
+            <h2 id="modalTitle">Matchup Depth</h2>
+            <button id="closeModalBtn" class="close-btn" aria-label="Close modal">&times;</button>
+          </header>
+          <div id="modalBody" class="modal-body">
+            <p>Loading...</p>
+          </div>
+        </div>
+      </dialog>
+
     </main>
 
     <script src="/static/app.js" defer></script>

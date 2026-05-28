@@ -8,7 +8,6 @@ from app.models.schemas import SourceCategory
 
 logger = logging.getLogger(__name__)
 
-
 class TelemetryProviderConnector:
     """Provider-specific connector that exposes neutral Source/Data Point concepts."""
 
@@ -19,40 +18,32 @@ class TelemetryProviderConnector:
         self.timeout = httpx.Timeout(settings.request_timeout_seconds)
 
     async def fetch_active_categories(self) -> list[SourceCategory]:
-        """Fetch active in-season category identifiers from the index endpoint."""
         if not self.settings.telemetry_configured:
             logger.warning("Telemetry Source connector is not configured; skipping category scrape.")
             return []
 
-        payload = await self._get_json(
-            "/v4/sports/",
-            params={"apiKey": self.settings.resolved_telemetry_api_key},
-        )
+        payload = await self._get_json("/v4/sports", params={"apiKey": self.settings.resolved_telemetry_api_key})
         if not isinstance(payload, list):
             return []
 
         categories: list[SourceCategory] = []
         for item in payload:
-            if not isinstance(item, dict):
-                continue
-            key = item.get("key")
-            title = item.get("title")
-            if isinstance(key, str) and key and isinstance(title, str) and title:
-                categories.append(SourceCategory(key=key, title=title))
-
+            if isinstance(item, dict):
+                if item.get("active") is False or item.get("has_outrights") is True:
+                    continue
+                key = item.get("key")
+                title = item.get("title")
+                if isinstance(key, str) and key and isinstance(title, str) and title:
+                    categories.append(SourceCategory(key=key, title=title))
         return categories
 
     async def fetch_stream_data(self, category_key: str) -> Any:
-        """Fetch nested Telemetry Vector data for a dynamic category identifier."""
-        if not self.settings.telemetry_configured:
-            logger.warning("Telemetry Source connector is not configured; skipping vector ingestion.")
-            return None
-        if not category_key:
-            logger.warning("Telemetry vector fetch skipped because category key is empty.")
+        if not self.settings.telemetry_configured or not category_key:
             return None
 
+        # Fixed URL path
         return await self._get_json(
-            f"/v4/sports/{category_key}/odds/",
+            f"/v4/sports/{category_key}/odds",
             params={
                 "apiKey": self.settings.resolved_telemetry_api_key,
                 "regions": self.settings.telemetry_default_region,
@@ -60,6 +51,59 @@ class TelemetryProviderConnector:
                 "oddsFormat": self.settings.telemetry_data_format,
             },
         )
+
+    async def fetch_scores(self, category_key: str, days_from: int | None = None) -> list[Any]:
+        if not self.settings.telemetry_configured or not category_key:
+            return []
+            
+        params: dict[str, str | None] = {"apiKey": self.settings.resolved_telemetry_api_key}
+        if days_from is not None:
+            params["daysFrom"] = str(days_from)
+            
+        payload = await self._get_json(f"/v4/sports/{category_key}/scores", params=params)
+        return payload if isinstance(payload, list) else []
+
+    async def fetch_event_schedule(self, category_key: str) -> list[Any]:
+        if not self.settings.telemetry_configured or not category_key:
+            return []
+            
+        params = {"apiKey": self.settings.resolved_telemetry_api_key}
+        payload = await self._get_json(f"/v4/sports/{category_key}/events", params=params)
+        return payload if isinstance(payload, list) else []
+
+    async def fetch_single_event_depth(self, category_key: str, event_id: str) -> Any:
+        if not self.settings.telemetry_configured or not category_key or not event_id:
+            return None
+            
+        params = {
+            "apiKey": self.settings.resolved_telemetry_api_key,
+            "regions": self.settings.telemetry_default_region,
+            "markets": "h2h,spreads,totals",
+            "oddsFormat": self.settings.telemetry_data_format,
+        }
+        # Fixed URL Path
+        return await self._get_json(f"/v4/sports/{category_key}/events/{event_id}/odds", params=params)
+
+    async def fetch_available_markets(self, category_key: str, event_id: str) -> list[Any]:
+        if not self.settings.telemetry_configured or not category_key or not event_id:
+            return []
+            
+        params = {"apiKey": self.settings.resolved_telemetry_api_key}
+        payload = await self._get_json(f"/v4/sports/{category_key}/events/{event_id}/markets", params=params)
+        return payload if isinstance(payload, list) else []
+
+    async def fetch_historical_snapshot(self, category_key: str, snapshot_timestamp: str) -> Any:
+        if not self.settings.telemetry_configured or not category_key or not snapshot_timestamp:
+            return None
+            
+        params = {
+            "apiKey": self.settings.resolved_telemetry_api_key,
+            "date": snapshot_timestamp,
+            "regions": self.settings.telemetry_default_region,
+            "markets": self.markets,
+            "oddsFormat": self.settings.telemetry_data_format,
+        }
+        return await self._get_json(f"/v4/historical/sports/{category_key}/odds", params=params)
 
     async def _get_json(self, path: str, params: dict[str, str | None]) -> Any:
         host = self.settings.resolved_telemetry_api_host

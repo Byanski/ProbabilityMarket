@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,9 +42,9 @@ class Settings(BaseSettings):
     @property
     def resolved_telemetry_api_host(self) -> str | None:
         if self.telemetry_api_host:
-            return self.telemetry_api_host.rstrip("/")
+            return self._normalize_host(self.telemetry_api_host)
         if self.legacy_data_feed_url_primary and "/v4/" in self.legacy_data_feed_url_primary:
-            return self.legacy_data_feed_url_primary.split("/v4/", maxsplit=1)[0].rstrip("/")
+            return self._normalize_host(self.legacy_data_feed_url_primary)
         return None
 
     @property
@@ -54,6 +55,12 @@ class Settings(BaseSettings):
     def telemetry_configured(self) -> bool:
         missing = set(self.missing_external_config)
         return "TELEMETRY_API_HOST" not in missing and "TELEMETRY_API_KEY" not in missing
+
+    def _normalize_host(self, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+        return value.rstrip("/")
 
 
 @lru_cache

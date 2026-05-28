@@ -39,10 +39,17 @@ class IndexRow(BaseModel):
     category_key: str
     category_title: str
     target_matchup: str
+    market_favorite: str
+    predicted_winner: str
     aggregated_mean_value: float
     highest_variance_vector: float
     adjustment_score: float
     normalized_probability: float
+    prediction_confidence: float
+    history_adjustment: float = 0.0
+    home_away_adjustment: float = 0.0
+    day_night_adjustment: float = 0.0
+    prediction_notes: list[str] = Field(default_factory=list)
     source_count: int
     market_keys: list[str] = Field(default_factory=list)
     line_points: list[float] = Field(default_factory=list)
