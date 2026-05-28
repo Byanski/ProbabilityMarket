@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Telemetry Index Matrix</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local telemetry engine</p>
+          <h1>Index Matrix</h1>
+        </div>
+        <div class="status-panel">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="statusText">Connecting</span>
+        </div>
+      </header>
+
+      <section id="warningPanel" class="warning-panel" hidden></section>
+
+      <section class="metric-grid" aria-label="Index summary">
+        <div class="metric">
+          <span class="metric-label">Tracked Rows</span>
+          <strong id="trackedRows">0</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Mean Index</span>
+          <strong id="meanIndex">0.0000</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Max Variance</span>
+          <strong id="maxVariance">0.0000</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Stats Buckets</span>
+          <strong id="statsBuckets">0</strong>
+        </div>
+      </section>
+
+      <nav id="tabs" class="tabs" aria-label="Source category tabs"></nav>
+
+      <section class="matrix-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Current view</p>
+            <h2 id="activeCategory">Category Alpha</h2>
+          </div>
+          <button id="refreshButton" class="refresh-button" type="button">Refresh</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Target Matchup</th>
+                <th>Markets</th>
+                <th>Lines</th>
+                <th>Aggregated Mean Value</th>
+                <th>Highest Variance Vector</th>
+                <th>Adjustment Score</th>
+                <th>Normalized Index</th>
+                <th>Sources</th>
+                <th>Telemetry Vectors</th>
+              </tr>
+            </thead>
+            <tbody id="matrixRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
